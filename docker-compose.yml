@@ -1,0 +1,51 @@
+# Week 3 lab — PostgreSQL 17 + pgAdmin
+# Structure follows the course reference:
+# https://github.com/pszponder/docker_postgres-pgadmin/blob/main/docker-compose.yaml
+# with postgres tuned for a one-off 500M-row bulk load + GiST build on a
+# 32 GB laptop. These are lab settings, not production settings.
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: pg17-gist-lab
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-nearby}
+    command: >
+      postgres
+      -c shared_buffers=6GB
+      -c effective_cache_size=18GB
+      -c maintenance_work_mem=4GB
+      -c work_mem=256MB
+      -c max_wal_size=16GB
+      -c synchronous_commit=off
+      -c max_parallel_workers_per_gather=4
+      -c max_parallel_maintenance_workers=4
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nearby"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin-gist-lab
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@lab.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

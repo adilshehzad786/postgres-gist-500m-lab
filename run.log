@@ -1,0 +1,197 @@
+nohup: ignoring input
+scale=500000000 batch=25000000 extension=0
+== 01_schema started 2026-07-13 19:04:31
+Timing is on.
+SELECT version();
+                                                       version                                                        
+----------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 17.10 (Debian 17.10-1.pgdg13+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit
+(1 row)
+
+Time: 0.489 ms
+DROP TABLE IF EXISTS locations;
+psql:/sql/01_schema.sql:5: NOTICE:  table "locations" does not exist, skipping
+DROP TABLE
+Time: 0.210 ms
+CREATE TABLE locations (
+    location_id  BIGSERIAL PRIMARY KEY,
+    name         TEXT,
+    geolocation  POINT          -- (x, y) = (longitude, latitude)
+);
+CREATE TABLE
+Time: 3.712 ms
+== 01_schema finished 2026-07-13 19:04:31
+
+== 02_load started 2026-07-13 19:04:31
+Timing is on.
+CREATE OR REPLACE PROCEDURE load_locations(total bigint, batch bigint)
+LANGUAGE plpgsql AS $proc$
+DECLARE
+  lo   bigint := 1;
+  hi   bigint;
+  t0   timestamptz;
+  secs numeric;
+BEGIN
+  WHILE lo <= total LOOP
+    hi := least(lo + batch - 1, total);
+    t0 := clock_timestamp();
+
+    INSERT INTO locations (name, geolocation)
+    SELECT
+      'Location_' || g,
+      POINT( -180 + random()*360,     -- lon
+             -90  + random()*180 )    -- lat
+    FROM generate_series(lo, hi) AS g;
+
+    secs := extract(epoch from clock_timestamp() - t0);
+    RAISE NOTICE '[%] loaded % / % rows  (batch: %s, ~% rows/s)',
+      to_char(clock_timestamp(),'HH24:MI:SS'),
+      hi, total,
+      round(secs, 1),
+      round((hi - lo + 1) / greatest(secs, 0.001))::bigint;
+
+    COMMIT;
+    lo := hi + 1;
+  END LOOP;
+END
+$proc$;
+CREATE PROCEDURE
+Time: 1.582 ms
+CALL load_locations(500000000, 25000000);
+psql:/sql/02_load.sql:40: NOTICE:  [19:07:43] loaded 25000000 / 500000000 rows  (batch: 192.0s, ~130178 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:11:20] loaded 50000000 / 500000000 rows  (batch: 216.8s, ~115307 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:14:25] loaded 75000000 / 500000000 rows  (batch: 185.1s, ~135078 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:17:33] loaded 100000000 / 500000000 rows  (batch: 187.8s, ~133144 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:20:19] loaded 125000000 / 500000000 rows  (batch: 165.7s, ~150841 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:23:24] loaded 150000000 / 500000000 rows  (batch: 184.8s, ~135269 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:26:20] loaded 175000000 / 500000000 rows  (batch: 176.1s, ~141992 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:29:05] loaded 200000000 / 500000000 rows  (batch: 165.0s, ~151513 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:32:04] loaded 225000000 / 500000000 rows  (batch: 178.9s, ~139760 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:34:48] loaded 250000000 / 500000000 rows  (batch: 164.6s, ~151867 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:37:43] loaded 275000000 / 500000000 rows  (batch: 174.9s, ~142973 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:40:36] loaded 300000000 / 500000000 rows  (batch: 172.6s, ~144847 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:43:19] loaded 325000000 / 500000000 rows  (batch: 163.6s, ~152832 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:46:17] loaded 350000000 / 500000000 rows  (batch: 177.3s, ~141042 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:48:59] loaded 375000000 / 500000000 rows  (batch: 162.5s, ~153881 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:52:02] loaded 400000000 / 500000000 rows  (batch: 183.1s, ~136524 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:54:47] loaded 425000000 / 500000000 rows  (batch: 165.3s, ~151235 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [19:57:35] loaded 450000000 / 500000000 rows  (batch: 167.5s, ~149246 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [20:00:33] loaded 475000000 / 500000000 rows  (batch: 177.8s, ~140621 rows/s)
+psql:/sql/02_load.sql:40: NOTICE:  [20:03:18] loaded 500000000 / 500000000 rows  (batch: 165.8s, ~150829 rows/s)
+CALL
+Time: 3527037.985 ms (58:47.038)
+== 02_load finished 2026-07-13 20:03:18
+
+== 03_before_gist started 2026-07-13 20:03:18
+Timing is on.
+ANALYZE locations;
+ANALYZE
+Time: 37219.979 ms (00:37.220)
+SELECT count(*) AS total_rows FROM locations;
+ total_rows 
+------------
+  500000000
+(1 row)
+
+Time: 534395.112 ms (08:54.395)
+SELECT pg_size_pretty(pg_total_relation_size('locations')) AS table_plus_pk_size;
+ table_plus_pk_size 
+--------------------
+ 46 GB
+(1 row)
+
+Time: 1216.429 ms (00:01.216)
+EXPLAIN ANALYZE
+SELECT *
+FROM locations
+WHERE geolocation <@ box '((-74.1,40.6),(-73.7,40.9))';
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Gather  (cost=1000.00..6285447.00 rows=500019 width=42) (actual time=6973.917..91907.868 rows=925 loops=1)
+   Workers Planned: 4
+   Workers Launched: 4
+   ->  Parallel Seq Scan on locations  (cost=0.00..6234445.10 rows=125005 width=42) (actual time=4522.928..91855.140 rows=185 loops=5)
+         Filter: (geolocation <@ '(-73.7,40.9),(-74.1,40.6)'::box)
+         Rows Removed by Filter: 99999815
+ Planning Time: 0.291 ms
+ JIT:
+   Functions: 10
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 1.361 ms (Deform 0.377 ms), Inlining 301.735 ms, Optimization 75.263 ms, Emission 60.040 ms, Total 438.398 ms
+ Execution Time: 91908.371 ms
+(12 rows)
+
+Time: 93483.617 ms (01:33.484)
+== 03_before_gist finished 2026-07-13 20:14:25
+
+== 04_build_gist started 2026-07-13 20:14:25
+Timing is on.
+CREATE INDEX idx_locations_gist ON locations USING gist (geolocation);
+psql:/sql/04_build_gist.sql:3: ERROR:  could not extend file "base/16384/16399.29": No space left on device
+HINT:  Check free disk space.
+Time: 1846527.110 ms (30:46.527)
+
+== 04_build_gist retry started 2026-07-13 20:53:05
+SHOW maintenance_work_mem;
+ maintenance_work_mem 
+----------------------
+ 24GB
+(1 row)
+
+Timing is on.
+CREATE INDEX idx_locations_gist ON locations USING gist (geolocation);
+
+== GiST progress snapshot 2026-07-13 21:06:57
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         126G   97G   24G  81% /
+ pid  |     phase      | blocks_done | blocks_total | progress_percent |     elapsed     
+------+----------------+-------------+--------------+------------------+-----------------
+ 5125 | building index |     4671885 |      4671885 |            100.0 | 00:13:51.872121
+(1 row)
+
+psql:/sql/04_build_gist.sql:3: ERROR:  canceling statement due to user request
+Time: 1455583.229 ms (24:15.583)
+== GiST final size
+ERROR:  relation "idx_locations_gist" does not exist
+LINE 3:       pg_size_pretty(pg_relation_size('idx_locations_gist'))...
+                                              ^
+== 04_build_gist retry finished 2026-07-13 21:17:21
+
+== Second GiST attempt cancelled 2026-07-13 21:18:45
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         126G   68G   53G  57% /
+               total        used        free      shared  buff/cache   available
+Mem:            62Gi        10Gi       4.8Gi       6.2Gi        54Gi        52Gi
+Swap:             0B          0B          0B
+ pid | phase 
+-----+-------
+(0 rows)
+
+ gist_index 
+------------
+ 
+(1 row)
+
+ estimated_rows 
+----------------
+      500019232
+(1 row)
+
+== Failed attempt output
+
+== 04_build_gist retry started 2026-07-13 20:53:05
+SHOW maintenance_work_mem;
+ maintenance_work_mem 
+----------------------
+ 24GB
+(1 row)
+
+Timing is on.
+CREATE INDEX idx_locations_gist ON locations USING gist (geolocation);
+psql:/sql/04_build_gist.sql:3: ERROR:  canceling statement due to user request
+Time: 1455583.229 ms (24:15.583)
+== GiST final size
+ERROR:  relation "idx_locations_gist" does not exist
+LINE 3:       pg_size_pretty(pg_relation_size('idx_locations_gist'))...
+                                              ^
+== 04_build_gist retry finished 2026-07-13 21:17:21
