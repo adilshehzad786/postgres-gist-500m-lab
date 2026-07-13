@@ -195,3 +195,143 @@ ERROR:  relation "idx_locations_gist" does not exist
 LINE 3:       pg_size_pretty(pg_relation_size('idx_locations_gist'))...
                                               ^
 == 04_build_gist retry finished 2026-07-13 21:17:21
+
+== 04_build_gist (wal_level=minimal) started 2026-07-13
+ALTER SYSTEM
+ALTER SYSTEM
+ALTER SYSTEM
+[+] Restarting 1/1
+ ✔ Container pg17-gist-lab  Started                                                                                                                                                                                                                   5.8s 
+ wal_level 
+-----------
+ minimal
+(1 row)
+
+ maintenance_work_mem 
+----------------------
+ 4GB
+(1 row)
+
+Filesystem      Size  Used Avail Use% Mounted on
+overlay         126G   67G   53G  56% /
+Timing is on.
+CREATE INDEX idx_locations_gist ON locations USING gist (geolocation);
+CREATE INDEX
+Time: 1416567.071 ms (23:36.567)
+ANALYZE locations;
+ANALYZE
+Time: 39435.954 ms (00:39.436)
+== 04_build_gist finished
+
+== 05_after_gist started 2026-07-13
+Timing is on.
+EXPLAIN ANALYZE
+SELECT *
+FROM locations
+WHERE geolocation <@ box '((-74.1,40.6),(-73.7,40.9))';
+                                                               QUERY PLAN                                                               
+----------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on locations  (cost=20211.78..1471136.72 rows=500029 width=42) (actual time=11.845..840.302 rows=925 loops=1)
+   Recheck Cond: (geolocation <@ '(-73.7,40.9),(-74.1,40.6)'::box)
+   Heap Blocks: exact=925
+   ->  Bitmap Index Scan on idx_locations_gist  (cost=0.00..20086.77 rows=500029 width=0) (actual time=11.115..11.115 rows=925 loops=1)
+         Index Cond: (geolocation <@ '(-73.7,40.9),(-74.1,40.6)'::box)
+ Planning Time: 11.687 ms
+ JIT:
+   Functions: 2
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.257 ms (Deform 0.071 ms), Inlining 0.000 ms, Optimization 0.000 ms, Emission 0.000 ms, Total 0.257 ms
+ Execution Time: 1253.383 ms
+(11 rows)
+
+Time: 1289.698 ms (00:01.290)
+EXPLAIN ANALYZE
+SELECT *
+FROM locations
+WHERE geolocation <@ circle '((-73.9855,40.7580), 0.02)';
+                                                             QUERY PLAN                                                              
+-------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on locations  (cost=20211.78..1471136.72 rows=500029 width=42) (actual time=0.067..0.081 rows=11 loops=1)
+   Recheck Cond: (geolocation <@ '<(-73.9855,40.758),0.02>'::circle)
+   Heap Blocks: exact=11
+   ->  Bitmap Index Scan on idx_locations_gist  (cost=0.00..20086.77 rows=500029 width=0) (actual time=0.059..0.059 rows=11 loops=1)
+         Index Cond: (geolocation <@ '<(-73.9855,40.758),0.02>'::circle)
+ Planning Time: 0.071 ms
+ JIT:
+   Functions: 2
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.121 ms (Deform 0.047 ms), Inlining 0.000 ms, Optimization 0.000 ms, Emission 0.000 ms, Total 0.121 ms
+ Execution Time: 0.244 ms
+(11 rows)
+
+Time: 3.461 ms
+EXPLAIN ANALYZE
+SELECT location_id, name, geolocation
+FROM locations
+ORDER BY geolocation <-> POINT(-73.9855, 40.7580)
+LIMIT 100;
+                                                                       QUERY PLAN                                                                       
+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.55..298.19 rows=100 width=50) (actual time=0.090..0.277 rows=100 loops=1)
+   ->  Index Scan using idx_locations_gist on locations  (cost=0.55..1488298804.07 rows=500029376 width=50) (actual time=0.089..0.270 rows=100 loops=1)
+         Order By: (geolocation <-> '(-73.9855,40.758)'::point)
+ Planning Time: 0.142 ms
+ Execution Time: 0.314 ms
+(5 rows)
+
+Time: 13.869 ms
+EXPLAIN ANALYZE
+SELECT count(*)
+FROM locations
+WHERE geolocation <@ polygon '((-74.02,40.70),(-73.94,40.70),(-73.94,40.80),(-74.02,40.80))';
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Aggregate  (cost=581605.13..581605.14 rows=1 width=8) (actual time=132.079..132.080 rows=1 loops=1)
+   ->  Index Only Scan using idx_locations_gist on locations  (cost=0.55..580355.06 rows=500029 width=0) (actual time=0.063..0.187 rows=59 loops=1)
+         Index Cond: (geolocation <@ '((-74.02,40.7),(-73.94,40.7),(-73.94,40.8),(-74.02,40.8))'::polygon)
+         Heap Fetches: 17
+ Planning Time: 2.876 ms
+ JIT:
+   Functions: 3
+   Options: Inlining true, Optimization true, Expressions true, Deforming true
+   Timing: Generation 0.125 ms (Deform 0.000 ms), Inlining 85.810 ms, Optimization 11.814 ms, Emission 34.254 ms, Total 132.003 ms
+ Execution Time: 132.257 ms
+(10 rows)
+
+Time: 142.293 ms
+SELECT indexrelid::regclass AS index_name,
+       idx_scan, idx_tup_read, idx_tup_fetch
+FROM pg_stat_user_indexes
+WHERE relid = 'locations'::regclass
+ORDER BY idx_scan DESC;
+     index_name     | idx_scan | idx_tup_read | idx_tup_fetch 
+--------------------+----------+--------------+---------------
+ idx_locations_gist |        1 |          925 |             0
+ locations_pkey     |        0 |            0 |             0
+(2 rows)
+
+Time: 34.974 ms
+SELECT
+  pg_size_pretty(pg_relation_size('locations'))        AS table_only,
+  pg_size_pretty(pg_indexes_size('locations'))         AS indexes_only,
+  pg_size_pretty(pg_total_relation_size('locations'))  AS total_with_indexes;
+ table_only | indexes_only | total_with_indexes 
+------------+--------------+--------------------
+ 36 GB      | 42 GB        | 77 GB
+(1 row)
+
+Time: 3.532 ms
+SELECT
+  indexrelid::regclass AS index_name,
+  pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_index
+WHERE indrelid = 'locations'::regclass
+ORDER BY pg_relation_size(indexrelid) DESC;
+     index_name     | index_size 
+--------------------+------------
+ idx_locations_gist | 31 GB
+ locations_pkey     | 10 GB
+(2 rows)
+
+Time: 0.358 ms
+== 05_after_gist finished 2026-07-13
