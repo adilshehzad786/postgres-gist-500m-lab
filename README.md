@@ -3,6 +3,7 @@
 Reproduces the jramcloud1 GiST tutorial at 500M rows and extends it with a
 quadtree (SP-GiST) and a geohash-style grid B-tree comparison.
 
+** Please make sure you have 120 GB free storage also using a high CPU compute. **
 ## Prerequisites
 
 - Docker Desktop running (WSL2 backend on Windows)
@@ -66,9 +67,4 @@ Note: if you re-run a query inside pgAdmin for a prettier screenshot, the
 number will differ a bit from `results/*.txt` (warm cache, GUI overhead).
 That's normal — say so in the PDF instead of hiding it.
 
-## What to send back for the PDF
 
-- the whole `results/` folder
-- the screenshots
-- machine specs: CPU model, RAM, disk model (`wmic diskdrive get model` or
-  Task Manager → Performance), Docker Desktop version
