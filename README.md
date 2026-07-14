@@ -3,7 +3,8 @@
 Reproduces the jramcloud1 GiST tutorial at 500M rows and extends it with a
 quadtree (SP-GiST) and a geohash-style grid B-tree comparison.
 
-** Please make sure you have 120 GB free storage also using a high CPU compute. **
+**Please make sure you have 120 GB free storage also using a high CPU compute.**
+
 ## Prerequisites
 
 - Docker Desktop running (WSL2 backend on Windows)
